@@ -64,6 +64,7 @@ func main() {
 
 	// Define subrouter for GET /check-following
 	router.Handle("/check-following", followsHandler.MiddlewareContentTypeSet(followsHandler.MiddlewareFollowDeserialization(http.HandlerFunc(followsHandler.CheckFollow)))).Methods(http.MethodGet)
+	router.Handle("/unfollow/{followedId}/{followingId}", followsHandler.MiddlewareContentTypeSet(http.HandlerFunc(followsHandler.UnfollowUser))).Methods(http.MethodDelete)
 
 	// Define subrouter for GET /user/{user_id}/following
 	router.Handle("/user/following/{user_id}", followsHandler.MiddlewareContentTypeSet(http.HandlerFunc(followsHandler.GetUserFollowing))).Methods(http.MethodGet)

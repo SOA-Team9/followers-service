@@ -305,8 +305,9 @@ func (fr *FollowRepo) GetFollowRecommendations(userID int) ([]int64, error) {
 		func(transaction neo4j.ManagedTransaction) (interface{}, error) {
 			result, err := transaction.Run(ctx,
 				`MATCH (u:User {Id: $userID})-[:FOLLOWS]->(:User)-[:FOLLOWS]->(recommendation:User)
-			WHERE NOT (u)-[:FOLLOWS]->(recommendation) AND u <> recommendation
-			RETURN recommendation.Id`,
+				WHERE NOT (u)-[:FOLLOWS]->(recommendation) AND u <> recommendation
+				RETURN DISTINCT recommendation.Id
+				`,
 				map[string]interface{}{"userID": userID})
 
 			if err != nil {
@@ -338,7 +339,20 @@ func (fr *FollowRepo) GetFollowRecommendations(userID int) ([]int64, error) {
 				fr.logger.Println("Error getting additional follow recommendations:", err)
 				return nil, err
 			}
-			recommendations = append(recommendations, additionalRecommendations...)
+			recommendationsTemp := recommendations
+			for _, value := range additionalRecommendations {
+				exists := false
+				for _, value2 := range recommendationsTemp {
+					if value == value2 {
+						exists = true
+						break
+					}
+				}
+				if !exists {
+					recommendations = append(recommendations, value)
+				}
+			}
+			//recommendations = append(recommendations, additionalRecommendations...)
 		}
 		return recommendations, nil
 	}
@@ -351,12 +365,10 @@ func (fr *FollowRepo) getAdditionalRecommendations(ctx context.Context, session 
 		func(transaction neo4j.ManagedTransaction) (interface{}, error) {
 			result, err := transaction.Run(ctx,
 				`MATCH (u:User {Id: $userID})
-                WHERE NOT (u)-[:FOLLOWS]->()
-                WITH u
-                LIMIT $limit
-                MATCH (recommendation:User)
-                WHERE u <> recommendation AND NOT (u)-[:FOLLOWS]->(recommendation)
-                RETURN recommendation.Id`,
+				OPTIONAL MATCH (recommendation:User)
+				WHERE recommendation.Id <> $userID AND NOT (u)-[:FOLLOWS]->(recommendation)
+				RETURN recommendation.Id
+				`,
 				map[string]interface{}{"userID": userID, "limit": targetCount - currentCount})
 
 			if err != nil {
@@ -385,4 +397,29 @@ func (fr *FollowRepo) getAdditionalRecommendations(ctx context.Context, session 
 	}
 
 	return nil, nil
+}
+
+func (fr *FollowRepo) UnfollowUser(follow model.Follow) error {
+	ctx := context.Background()
+	session := fr.driver.NewSession(ctx, neo4j.SessionConfig{DatabaseName: "neo4j"})
+	defer session.Close(ctx)
+
+	_, err := session.ExecuteWrite(ctx,
+		func(transaction neo4j.ManagedTransaction) (interface{}, error) {
+			_, err := transaction.Run(ctx,
+				`MATCH (follower:User {Id: $followerID})-[r:FOLLOWS]->(followed:User {Id: $followedID})
+				DELETE r`,
+				map[string]interface{}{"followerID": follow.FollowerID, "followedID": follow.FollowedID})
+			if err != nil {
+				return nil, err
+			}
+			return nil, nil
+		})
+
+	if err != nil {
+		fr.logger.Println("Error unfollowing user:", err)
+		return err
+	}
+
+	return nil
 }

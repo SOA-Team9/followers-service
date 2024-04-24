@@ -55,6 +55,22 @@ func (f *FollowsHandler) FollowUser(rw http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func (f *FollowsHandler) UnfollowUser(rw http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	followedId, err := strconv.Atoi(vars["followedId"])
+	followingId, err := strconv.Atoi(vars["followingId"])
+
+	follows := &model.Follow{FollowedID: followedId, FollowerID: followingId}
+
+	err = f.repo.UnfollowUser(*follows)
+	if err != nil {
+		f.logger.Println("Error unfollowing user:", err)
+		rw.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	rw.WriteHeader(http.StatusOK)
+}
+
 func (f *FollowsHandler) CheckFollow(rw http.ResponseWriter, r *http.Request) {
 	follows := r.Context().Value(KeyProduct{}).(*model.Follow)
 	f.logger.Println("Follows: ", follows)
